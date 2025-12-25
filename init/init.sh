@@ -109,11 +109,8 @@ cecho blue  "作者：Vesper"
 
 #===================｜系统更新｜======================
 cecho blue bold "1.系统更新"
-
 apt_run "获取资源" update
-apt_run "更新" upgrade -y
-apt_run "二次检查" update
-apt_run "二次更新" upgrade --only-upgrade -y
+apt_run "更新" upgrade --only-upgrade -y
 cecho green "   --完成"
 
 #===================｜工具安装｜======================
