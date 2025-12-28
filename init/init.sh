@@ -116,36 +116,50 @@ cecho green "   --完成"
 #===================｜工具安装｜======================
 cecho blue bold "2.安装常用工具"
 TOOLS=(
+  sudo
   curl
+  vim
   wget
   git
-  vim
-  tzdata
-  htop
-  build-essential
+  ca-certificates
+  iproute2
+  lsof
+  jq
+  unzip
   zip
   tree 
-  net-tools
-  unzip
-  tmux
-  command-not-found
-  python3-pip
-  openvpn
-  neofetch
-  jq
+  htop
   trash-cli
   inetutils-traceroute
+  journald
+  bash-completion
+  less
+  psmisc
+  cron
+  file
+  uuid-runtime
+  whois
+  tzdata
+  gnupg
+  unzip
+  tmux
+  lsb-release
+  command-not-found
+  dnsutils
+  logrotate
+  build-essential
+  python3-pip
 )
 
 for pkg in "${TOOLS[@]}"; do
   if dpkg -s "$pkg" >/dev/null 2>&1; then
-    cecho cyan "   --$pkg 已安装"
+    cecho green "   --$pkg 已安装"
     continue
   fi
 
 apt -o Dpkg::Progress-Fancy="0" install -y "$pkg" >/dev/null 2>&1 &
 pid=$!
-progress_bar_task "$pid" "install $pkg"
+progress_bar_task "$pid" "$pkg"
 wait "$pid"
   if dpkg -s "$pkg" >/dev/null 2>&1; then
     cecho green "  --$pkg 已安装"
@@ -155,7 +169,7 @@ wait "$pid"
     dpkg --configure -a >/dev/null 2>&1
 apt -o Dpkg::Progress-Fancy="0" install -y "$pkg" >/dev/null 2>&1 &
 pid=$!
-progress_bar_task "$pid" "install $pkg"
+progress_bar_task "$pid" "$pkg"
 wait "$pid"
 
     dpkg -s "$pkg" >/dev/null 2>&1 \
@@ -644,16 +658,19 @@ export LC_ALL=zh_CN.UTF-8 >/dev/null 2>&1
 apt_run "检查更新" update
 apt_run "安装zh语言包" install -y language-pack-zh-hans
 cecho green "   --成功 "
+cecho white "--中文语言环境已配置 执行 exit ，重新连接ssh后即可生效
+重连后您可使用 ls /not-exist 检查来检查是否配置成功 "
 #===================｜清理｜======================
 cecho blue bold "13.清理系统垃圾"
 apt_run "apt autoremove" autoremove -y
 apt autoclean -y >/dev/null 2>&1 && \
 cecho green "   --成功"  || \
   cecho red "   --设置失败"
+#===================｜后续｜======================
+
 
 #===================｜清理｜======================
-cecho white "--中文语言环境已配置 执行 exit ，重新连接ssh后即可生效
-重连后您可使用 ls /not-exist 检查来检查是否配置成功 "
+
 
 cecho white "如有任何问题可反馈至 shuhany86@gmail.com"
 cecho purple "  -------感谢使用本脚本------"
