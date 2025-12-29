@@ -670,7 +670,7 @@ cecho green "   --成功"  || \
 #===================｜后续｜======================
 cecho red "----开荒完成，10s后将自动部署ppanel后端，如无须部署请输入^C结束脚本---"
 sleep 10
-curl -fsSL https://get.docker.com >/dev/null 2>&1 | sh >/dev/null 2>&1
+curl -fsSL https://get.docker.com | sh
 systemctl start docker || cecho red "   --docker启动失败"
 systemctl enable docker || cecho red "   --docker启动失败"
 mkdir -p /root/ppanel/
