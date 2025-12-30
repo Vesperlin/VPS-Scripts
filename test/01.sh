@@ -104,13 +104,13 @@ apt_run() {
 
 #------------------------------------------------
 pause() {
-  cecho
-  cecho -rp "请选择要执行的操作："
+  cecho white
+  cecho white -rp "请选择要执行的操作："
 }
 
 error_msg() {
-  cecho
-  cecho red "未输入有效数字"
+  cecho white
+  cecho  red "未输入有效数字"
   sleep 1
 }
 
@@ -121,24 +121,24 @@ error_msg() {
 do_action() {
   case "$1" in
     1)
-      cecho ">>>  磁盘读写测试"
+      cecho white ">>>  磁盘读写测试"
       dd if=/dev/zero of=test bs=64k count=4k oflag=dsync
       ;;
     2)
-      cecho ">>>  带宽 IO CPU 一键测试"
+      cecho white ">>>  带宽 IO CPU 一键测试"
       wget -qO- bench.sh | bash
       ;;
     3)
-      cecho ">>>  查看系统数据"
+      cecho white ">>>  查看系统数据"
       apt install neofetch -y >/dev/null 2>&1 && neofetch
       ;;
     4)
-      cecho ">>>  硬件测试"
-      wget -q https://github.com/Aniverse/A/raw/i/a>/dev/null 2>&1 && bash a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  Retry  Reason  Retry  Reason        Retry  ReasonRetry  Reason  Retry  Reason    Retry  ReasonRetry  Reason    Retry  Reason    Retry  Reason    Retry  Reason      Retry  Reason      Retry  Reason  Retry  ReasonRetry  Reason  Retry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  Reason  Retry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  ReasonRetry  Reason      Retry  ReasonRetry  Reason      Retry  ReasonRetry  Reason  Retry  Reason        Retry  Reason    Retry  ReasonRetry  ReasonRetry  Reason      Retry  Reason          Retry  Reason        Retry  Reason      Retry  ReasonRetry  Reason      Retry  Reason    Retry  ReasonRetry  ReasonRetry  Reason    Retry  Reason  Retry  ReasonRetry  Reason                  Retry  Reason                                              Retry  Reason     ">>>  流媒体解锁测试"
+      cecho white ">>>  硬件测试"
+      wget -q https://github.com/Aniverse/A/raw/i/a>/dev/null 2>&1 && bash a                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               
       bash <(curl -L -s check.unlock.media)
       ;;
     6)
-      cecho ">>>  三网回程线路质量"
+      cecho white ">>>  三网回程线路质量"
       curl https://raw.githubusercontent.com/ludashi2020/backtrace/main/install.sh -sSf | sh    
       ;;
     7)
