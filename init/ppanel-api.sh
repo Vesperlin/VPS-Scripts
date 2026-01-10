@@ -1,3 +1,5 @@
+
+
 #!/usr/bin/env bash
 #=================｜基础环境｜=======================      
 export DEBIAN_FRONTEND=noninteractive
@@ -102,179 +104,440 @@ apt_run() {
   wait "$pid"
 }
 
-cecho blue bold "===== PPanel-docker后端部署 ====="
-cecho green  "api后端域名SSL证书配置 "
-cecho white  "请确保DNS已正确指向此服务器，且已申请了SSL证书 "
-read -p "请输入后端api域名 >" apidomain && export apidomain
-read -p "[1]SSL证书路径 -- [直接回车]粘贴SSL证书内容>" SSLchoice && export SSLchoice ||SSLchoice=$2 && export SSLchoice
-if test $SSLchoice = "1"; then
-   cecho yellow "下面请正确输入证书路径"
-   read -p "源文件路径>" fullchain && export fullchain
-   read -p "密钥路径>" privkey && export privkey
-else
-   read -p "[1]单证书 -- [直接回车]通配符证书> " SSLchoices && export SSLchoices ||SSLchoices=$2 && export SSLchoices
-   if test $SSLchoices = "1"; then
-      read -p "请输入通配符主域>" SSLdomain && export SSLdomain
-   else
-      SSLdomain=$apidomain && export SSLdomain
-   fi
-   read -p "请粘贴源文件内容（.pem）>" fullchaintext && export fullchaintext
-   read -p "请粘贴密钥内容（.pem）>" privkeytext && export privkeytext
-fi
-cecho green  "请输入MySQL数据库密码 "
-read -p "直接回车默认随机生成 >" MYSQLpassword && export MYSQLpassword ||apt install -y uuid-runtime >/dev/null 2>&1 && MYSQLpassword=$(uuidgen) && export MYSQLpassword
-cecho green  "请输入JWT密码 "
-read -p "直接回车默认随机生成 >" JWTpassword && export JWTpassword ||apt install -y uuid-runtime >/dev/null 2>&1 && JWTpassword=$(uuidgen) && export JWTpassword
 
+cecho blue bold "===== VPS 初始开荒脚本 ====="
+cecho blue  "作者：Vesper"
 
 
 #===================｜系统更新｜======================
-curl -fsSL https://get.docker.com | sh
-systemctl start docker || cecho red  "docker 启动失败"
-systemctl enable docker|| cecho red  "docker 启动失败"
-mkdir -p /root/ppanel/
-mkdir -p /root/ppanel/ppanel-config/
-touch /root/ppanel/ppanel-config/ppanel.yaml
-touch /root/ppanel/docker-compose.yml
-cat > /root/ppanel/ppanel-config/ppanel.yaml <<'EOF'
-# 数据库配置
-database:
-  type: mysql
-  host: localhost
-  port: 3306
-  username: ppanel
-  password: $MYSQLpassword
-  database: ppanel
+cecho blue bold "1.系统更新"
+apt_run "获取资源" update
+apt_run "更新" upgrade --only-upgrade -y
+cecho green "   --完成"
 
-# Redis 配置
-redis:
-  host: localhost
-  port: 6379
-  password: ""
-  db: 0
+#===================｜工具安装｜======================
+cecho blue bold "2.安装常用工具"
+TOOLS=(
+  sudo
+  curl
+  vim
+  wget
+  git
+  ca-certificates
+  iproute2
+  lsof
+  jq
+  unzip
+  zip
+  tree 
+  htop
+  trash-cli
+  inetutils-traceroute
+  bash-completion
+  less
+  psmisc
+  cron
+  file
+  uuid-runtime
+  whois
+  tzdata
+  gnupg
+  unzip
+  tmux
+  lsb-release
+  command-not-found
+  dnsutils
+  logrotate
+  build-essential
+  python3-pip
+)
 
-# 服务配置
-server:
-  host: 0.0.0.0
-  port: 8080
+for pkg in "${TOOLS[@]}"; do
+  if dpkg -s "$pkg" >/dev/null 2>&1; then
+    cecho green "   --$pkg 已安装"
+    continue
+  fi
 
-# CORS 配置
-cors:
-  allow_origins:
-    - "https://$apidomain"
-    - "http://localhost:3000"  # 开发环境
-  allow_methods:
-    - GET
-    - POST
-    - PUT
-    - DELETE
-    - OPTIONS
-  allow_headers:
-    - "*"
+apt -o Dpkg::Progress-Fancy="0" install -y "$pkg" >/dev/null 2>&1 &
+pid=$!
+progress_bar_task "$pid" "$pkg"
+wait "$pid"
+  if dpkg -s "$pkg" >/dev/null 2>&1; then
+    cecho green "  --$pkg 已安装"
+  else
+    cecho yellow "     --$pkg 安装失败"
+    apt_run "尝试修复" --fix-broken install -y
+    dpkg --configure -a >/dev/null 2>&1
+apt -o Dpkg::Progress-Fancy="0" install -y "$pkg" >/dev/null 2>&1 &
+pid=$!
+progress_bar_task "$pid" "$pkg"
+wait "$pid"
 
-# JWT 配置
-jwt:
-  secret: "$JWTpassword"
-  expire: 7200  # 2小时
+    dpkg -s "$pkg" >/dev/null 2>&1 \
+      && cecho green "  --$pkg 已安装" \
+      || cecho red "  --$pkg 放弃安装 "
+  fi
+done
 
-# API 配置
-api:
-  prefix: "/api"
-  version: "v1"
-  
-EOF
-cd /root/ppanel/
-docker run -d \
-  --name ppanel-mysql \
-  -e MYSQL_ROOT_PASSWORD=Cici080306 \
-  -e MYSQL_DATABASE=ppanel \
-  -e MYSQL_USER=ppanel \
-  -e MYSQL_PASSWORD=Cici080306 \
-  -p 3306:3306 \
-  -v ppanel-mysql-data:/var/lib/mysql \
-  mysql:5.7 \
-  >/dev/null 2>&1 || cecho red  "MySQL 容器启动失败" && exit 1
-sleep 10
-docker run -d \
-  --name ppanel-redis \
-  -p 6379:6379 \
-  -v ppanel-redis-data:/data \
-  redis:7-alpine \
-  >/dev/null 2>&1 || cecho red  "Redis 容器启动失败" && exit 1
-docker pull ppanel/ppanel:latest >/dev/null 2>&1 || cecho red "镜像拉取失败"
-docker run -d \
-  --name ppanel-backend \
-  -p 8080:8080 \
-  -v $(pwd)/config.yaml:/app/config.yaml \
-  --link ppanel-mysql:mysql \
-  --link ppanel-redis:redis \
-  ppanel/ppanel:latest \
-     >/dev/null 2>&1 || cecho red  "启动失败" && exit 1
-cd /root/
-docker exec ppanel-backend ./gateway migrate >/dev/null 2>&1  || cecho red "数据库迁移取失败"
-docker ps
-apt update -y >/dev/null 2>&1 && apt upgrade -y >/dev/null 2>&1
-apt install -y nginx >/dev/null 2>&1 && systemctl start nginx >/dev/null 2>&1
-systemctl enable nginx >/dev/null 2>&1
-cd /root/
-if test $SSLchoice = "1"; then
-   DomainSSLfullchain=fullchain
-   DomainSSLprivkey=privkey
+#===================｜vim默认｜======================
+
+cecho blue bold "3.设置默认编辑器为 vim"
+
+update-alternatives --set editor /usr/bin/vim.basic >/dev/null 2>&1 && \
+  cecho green "   --成功" || \
+  cecho red "   --vim设置失败"
+
+#=================｜自动安全更新｜=====================
+cecho blue bold "4.设置自动安全更新"
+DEBIAN_FRONTEND=noninteractive apt install -y unattended-upgrades \
+  >/dev/null 2>&1
+printf "\n" >&2
+dpkg-reconfigure --priority=low unattended-upgrades \
+  >/dev/null 2>&1 && \
+  cecho green "   --成功" || \
+  cecho yellow "   --启用失败"
+
+#===================｜创建用户｜======================
+cecho blue bold "5.创建用户 vesper"
+if id vesper >/dev/null 2>&1; then
+  cecho white "   --用户 vesper 已存在"
 else
-   DomainSSLfullchain=/etc/nginx/ssl/$SSLdomain/fullchain.pem
-   DomainSSLprivkey=/etc/nginx/ssl/$SSLdomain/privkey.pem
-mkdir -p /etc/nginx/ssl/
-mkdir -p /etc/nginx/ssl/$SSLdomain/
-touch /etc/nginx/ssl/$SSLdomain/fullchain.pem
-touch /etc/nginx/ssl/$SSLdomain/privkey.pem
-cat > /etc/nginx/ssl/$SSLdomain/fullchain.pem <<'EOF'
-$ fullchaintext
-EOF
-cat > /etc/nginx/ssl/$SSLdomain/privkey.pem <<'EOF'
-$ privkeytext
-EOF
-chmod 600 /etc/nginx/ssl/$SSLdomain/*
+  adduser --disabled-password --gecos "" vesper >/dev/null 2>&1 && \
+  echo "vesper:Cici080306" | chpasswd || \
+  cecho red "   -- 创建失败"
 fi
-touch /etc/nginx/sites-available/ppanel.conf
-cat > /etc/nginx/sites-available/ppanel.conf <<'EOF'
-server {
-    listen 80;
-    server_name $apidomain;
-
-    return 301 https://$host$request_uri;
-}
+usermod -aG sudo vesper >/dev/null 2>&1 || \
+  cecho red "   --授予权限失败"
+echo "vesper ALL=(ALL) ALL" >/etc/sudoers.d/vesper
+chmod 440 /etc/sudoers.d/vesper && \
+  cecho green "   --成功" || \
+  cecho red "   --权限文件修改失败"
 
 
-server {
-    listen 443 ssl http2;
-    server_name $apidomain;
 
-    ssl_certificate     DomainSSLfullchain;
-    ssl_certificate_key DomainSSLprivkey;
+#================｜修改颜色｜====================
+cp /home/vesper/.bashrc /root/.bashrc || true
+cecho blue "8.修改颜色"
+cat > /home/vesper/.bashrc <<'EOF'
+#----------------------------------------------------------------------
+#           ~/.bashrc
+# ·由bash(1)在非登录shell中执行。
+# ·示例请参见/usr/share/doc/bash/examples/startup-files（位于bash-doc软件包中）
+# ·若非交互式运行，则不执行任何操作
+#----------------------------------------------------------------------
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+#----------------------------------------------------------------------
+# /历史中不保留重复行或以空格开头的行/
+HISTCONTROL=ignoreboth
 
-    ssl_protocols TLSv1.2 TLSv1.3;
-    ssl_prefer_server_ciphers off;
+# /追加到历史记录文件，不要覆盖它/
+shopt -s histappend
 
-    location / {
-        proxy_pass http://127.0.0.1:8080;
+# /设置历史记录长度/
+HISTSIZE=1000
+HISTFILESIZE=2000
+#----------------------------------------------------------------------
+# /在每次命令执行后检查窗口尺寸，并在必要时更新 LINES 和 COLUMNS 的值/
+shopt -s checkwinsize
+#----------------------------------------------------------------------
+# /若设置此选项，在路径名扩展上下文中使用的模式"**"将匹配所有文件以及零个或多个目录和子目录/
+#shopt -s globstar
+#----------------------------------------------------------------------
+# /使less对非文本输入文件更友好/
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+#----------------------------------------------------------------------
+# /设置标识工作 chroot 环境的变量/
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+#----------------------------------------------------------------------
+# /设置一个花哨的提示符（非彩色，除非我们确定需要彩色）/
+case "$TERM" in
+    xterm-color|*-256color) color_prompt=yes;;
+esac
+#----------------------------------------------------------------------
+# /启用彩色提示符/
+#   - 默认关闭以避免干扰用户
+# /终端窗口的焦点应集中在命令输出而非提示符上/
+#force_color_prompt=yes
 
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
+if [ -n "$force_color_prompt" ]; then
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+	 # /我们支持颜色功能,假设其符合 Ecma-48/(ISO/IEC-6429) 标准/
+	color_prompt=yes
+    else
+	color_prompt=
+    fi
+fi
 
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;33m\]\u\[\033[00m\]:\[\033[01;31m\]\w\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
+#----------------------------------------------------------------------
 
-        proxy_connect_timeout 60s;
-        proxy_send_timeout 60s;
-        proxy_read_timeout 60s;
-    }
-}
+# /若此为xterm终端，则将标题设置为用户@主机:目录/
+case "$TERM" in
+xterm*|rxvt*)
+    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    ;;
+*)
+    ;;
+esac
+#----------------------------------------------------------------------
+# /启用 ls 命令的颜色支持，并添加实用别名/
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    #alias dir='dir --color=auto'
+    #alias vdir='vdir --color=auto'
+
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+#----------------------------------------------------------------------
+# /带颜色的GCC警告和错误/
+export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+#----------------------------------------------------------------------
+# /更多 ls 别名/
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+#----------------------------------------------------------------------
+# /为长时间运行的命令添加"alert"别名/
+# 使用方式如下: sleep 10; alert
+alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
+#----------------------------------------------------------------------
+# /别名定义/
+#   -建议将所有新增内容另存为独立文件
+#   -如 ~/.bash_aliases,而非直接添加在此处
+
+if [ -f ~/.bash_aliases ]; then
+    . ~/.bash_aliases
+fi
+#----------------------------------------------------------------------
+# /启用可编程补全功能/
+#   -若已在 /etc/bash.bashrc 和 /etc/profile 中启用，则无需重复启用
+#   -执行 /etc/bash.bashrc 文件
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi
+#----------------------------------------------------------------------
+# /pnpm/
+export PNPM_HOME="/root/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+#----------------------------------------------------------------------
+# /bun/
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+alias rm='trash-put'
+alias php81='php81 -c /www/server/php/81/etc/php-cli.ini'
+#----------------------------------------------------------------------
+
 EOF
-ln -s /etc/nginx/sites-available/ppanel.conf \
-      /etc/nginx/sites-enabled/ppanel.conf\
-          >/dev/null 2>&1
-nginx -t >/dev/null 2>&1
-systemctl reload nginx >/dev/null 2>&1
+
+chown vesper:vesper /home/vesper/.bashrc
+
+cat > /root/.bashrc <<'EOF'
+#----------------------------------------------------------------------
+#           ~/.bashrc
+# ·由bash(1)在非登录shell中执行。
+# ·示例请参见/usr/share/doc/bash/examples/startup-files（位于bash-doc软件包中）
+# ·若非交互式运行，则不执行任何操作
+#----------------------------------------------------------------------
+case $- in
+    *i*) ;;
+      *) return;;
+esac
+#----------------------------------------------------------------------
+# /历史中不保留重复行或以空格开头的行/
+HISTCONTROL=ignoreboth
+
+# /追加到历史记录文件，不要覆盖它/
+shopt -s histappend
+
+# /设置历史记录长度/
+HISTSIZE=1000
+HISTFILESIZE=2000
+#----------------------------------------------------------------------
+# /在每次命令执行后检查窗口尺寸，并在必要时更新 LINES 和 COLUMNS 的值/
+shopt -s checkwinsize
+#----------------------------------------------------------------------
+# /若设置此选项，在路径名扩展上下文中使用的模式"**"将匹配所有文件以及零个或多个目录和子目录/
+#shopt -s globstar
+#----------------------------------------------------------------------
+# /使less对非文本输入文件更友好/
+[ -x /usr/bin/lesspipe ] && eval "$(SHELL=/bin/sh lesspipe)"
+#----------------------------------------------------------------------
+# /设置标识工作 chroot 环境的变量/
+if [ -z "${debian_chroot:-}" ] && [ -r /etc/debian_chroot ]; then
+    debian_chroot=$(cat /etc/debian_chroot)
+fi
+#----------------------------------------------------------------------
+# /设置一个花哨的提示符（非彩色，除非我们确定需要彩色）/
+case "$TERM" in
+    xterm-color|*-256color) color_prompt=yes;;
+esac
+#----------------------------------------------------------------------
+# /启用彩色提示符/
+#   - 默认关闭以避免干扰用户
+# /终端窗口的焦点应集中在命令输出而非提示符上/
+#force_color_prompt=yes
+
+if [ -n "$force_color_prompt" ]; then
+    if [ -x /usr/bin/tput ] && tput setaf 1 >&/dev/null; then
+	 # /我们支持颜色功能,假设其符合 Ecma-48/(ISO/IEC-6429) 标准/
+	color_prompt=yes
+    else
+	color_prompt=
+    fi
+fi
+
+if [ "$color_prompt" = yes ]; then
+    PS1='${debian_chroot:+($debian_chroot)}\[\033[01;34m\]\u\[\033[00m\]:\[\033[01;35m\]\w\[\033[00m\]\$ '
+else
+    PS1='${debian_chroot:+($debian_chroot)}\u@\h:\w\$ '
+fi
+unset color_prompt force_color_prompt
+#----------------------------------------------------------------------
+
+# /若此为xterm终端，则将标题设置为用户@主机:目录/
+case "$TERM" in
+xterm*|rxvt*)
+    PS1="\[\e]0;${debian_chroot:+($debian_chroot)}\u@\h: \w\a\]$PS1"
+    ;;
+*)
+    ;;
+esac
+#----------------------------------------------------------------------
+# /启用 ls 命令的颜色支持，并添加实用别名/
+if [ -x /usr/bin/dircolors ]; then
+    test -r ~/.dircolors && eval "$(dircolors -b ~/.dircolors)" || eval "$(dircolors -b)"
+    alias ls='ls --color=auto'
+    #alias dir='dir --color=auto'
+    #alias vdir='vdir --color=auto'
+
+    alias grep='grep --color=auto'
+    alias fgrep='fgrep --color=auto'
+    alias egrep='egrep --color=auto'
+fi
+#----------------------------------------------------------------------
+# /带颜色的GCC警告和错误/
+export GCC_COLORS='error=01;31:warning=01;35:note=01;36:caret=01;32:locus=01:quote=01'
+#----------------------------------------------------------------------
+# /更多 ls 别名/
+alias ll='ls -alF'
+alias la='ls -A'
+alias l='ls -CF'
+#----------------------------------------------------------------------
+# /为长时间运行的命令添加"alert"别名/
+# 使用方式如下: sleep 10; alert
+alias alert='notify-send --urgency=low -i "$([ $? = 0 ] && echo terminal || echo error)" "$(history|tail -n1|sed -e '\''s/^\s*[0-9]\+\s*//;s/[;&|]\s*alert$//'\'')"'
+#----------------------------------------------------------------------
+# /别名定义/
+#   -建议将所有新增内容另存为独立文件
+#   -如 ~/.bash_aliases,而非直接添加在此处
+
+if [ -f ~/.bash_aliases ]; then
+    . ~/.bash_aliases
+fi
+#----------------------------------------------------------------------
+# /启用可编程补全功能/
+#   -若已在 /etc/bash.bashrc 和 /etc/profile 中启用，则无需重复启用
+#   -执行 /etc/bash.bashrc 文件
+if ! shopt -oq posix; then
+  if [ -f /usr/share/bash-completion/bash_completion ]; then
+    . /usr/share/bash-completion/bash_completion
+  elif [ -f /etc/bash_completion ]; then
+    . /etc/bash_completion
+  fi
+fi
+#----------------------------------------------------------------------
+# /pnpm/
+export PNPM_HOME="/root/.local/share/pnpm"
+case ":$PATH:" in
+  *":$PNPM_HOME:"*) ;;
+  *) export PATH="$PNPM_HOME:$PATH" ;;
+esac
+#----------------------------------------------------------------------
+# /bun/
+export BUN_INSTALL="$HOME/.bun"
+export PATH="$BUN_INSTALL/bin:$PATH"
+alias rm='trash-put'
+alias php81='php81 -c /www/server/php/81/etc/php-cli.ini'
+#----------------------------------------------------------------------
+EOF
+cecho green "   --成功"
+#===================｜root密码｜======================
+cecho blue bold "9.设置 root 密码"
+
+echo "root:Cici080306" | chpasswd && \
+  cecho yellow "   --密码 Cici080306" && \
+  cecho green "   --成功"|| \
+  cecho red "   --设置失败"
+
+#===================｜Swap｜======================
+cecho blue bold "10.创建Swap"
+ENABLE_SWAP=1
+SWAP_SIZE=2G
+
+if [[ "$ENABLE_SWAP" == "1" ]]; then
+  if swapon --show | grep -q swap; then
+    cecho cyan "   --Swap 已存在 跳过"
+  else
+    fallocate -l "$SWAP_SIZE" /swapfile && \
+    chmod 600 /swapfile && \
+    mkswap /swapfile >/dev/null 2>&1 && \
+    swapon /swapfile && \
+    echo '/swapfile none swap sw 0 0' >> /etc/fstab && \
+    cecho yellow "   --已启用 ($SWAP_SIZE)" && \
+    cecho green "   --成功" || \
+    cecho red "   --Swap 创建失败"
+  fi
+else
+  cecho red "  --已按配置禁用 swap"
+fi
+#===================｜时区｜======================
+cecho blue bold "11.修改系统时区｜上海 "
+timedatectl set-timezone Asia/Shanghai >/dev/null 2>&1 && \
+  cecho green "   --成功 " || \
+  cecho red "   --设置失败"
+#===================｜界面汉化｜======================
+cecho blue bold "12.语言修改为中文 "
+locale >/dev/null 2>&1
+locale-gen zh_CN.UTF-8 >/dev/null 2>&1
+update-locale LANG=zh_CN.UTF-8 LC_ALL=zh_CN.UTF-8 >/dev/null 2>&1
+cat /etc/default/locale >/dev/null 2>&1
+export LANG=zh_CN.UTF-8 >/dev/null 2>&1
+export LC_ALL=zh_CN.UTF-8 >/dev/null 2>&1
+apt_run "检查更新" update
+apt_run "安装zh语言包" install -y language-pack-zh-hans
+cecho green "   --成功 "
+cecho white "--中文语言环境已配置 执行 exit ，重新连接ssh后即可生效
+重连后您可使用 ls /not-exist 检查来检查是否配置成功 "
+#===================｜清理｜======================
+cecho blue bold "13.清理系统垃圾"
+apt_run "apt autoremove" autoremove -y
+apt autoclean -y >/dev/null 2>&1 && \
+cecho green "   --成功"  || \
+  cecho red "   --设置失败"
+#===================｜后续｜======================
+
+
+#===================｜清理｜======================
+
+cecho white "如有任何问题可反馈至 shuhany86@gmail.com"
+cecho purple "  -------感谢使用本脚本------"
